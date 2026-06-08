@@ -1,18 +1,18 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
+from pydantic import BaseModel, Field
 import sys
 import os
-from pydantic import BaseModel
 
-# Menambahkan path agar Python bisa membaca folder proyek
+# Menambahkan path agar Python bisa membaca folder proyek secara dinamis
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from database.models import Base
 
-# Mengimpor modul AI GRC Agent / Scoring Engine (Fase 4)
+from database.models import Base
 from ai_grc_agent.scoring_engine import calculate_risk_score
 
-# Mengimpor semua router dari modul-modul Fase 3 hingga Fase 5
+# Mengimpor semua router 
 from api.pre_engagement import router as pre_engagement_router
 from api.reconnaissance import router as osint_router
 from api.scanning import router as scanning_router
@@ -20,51 +20,34 @@ from api.exploitation import router as exploit_router
 from api.ticketing import router as ticketing_router
 from api.dashboard import router as dashboard_router
 
-# Di scanners/nmap_runner.py
-import subprocess
-
-def run_nmap_scan(target_ip):
-    try:
-        hasil = subprocess.run(['nmap', '-sV', str(target_ip)], capture_output=True, text=True, check=True)
-        return hasil.stdout
-    except FileNotFoundError:
-        raise RuntimeError("Engine Nmap belum terinstal di server host.")
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Nmap gagal dieksekusi: {e.stderr}")
-
-# Di api/scanning.py
-from fastapi import HTTPException
-
-@router.post("/run-scan/")
-def run_vulnerability_scan(request: ScanRequest):
-    try:
-        log_hasil = run_nmap_scan(request.target)
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    # ...
-
-# Konfigurasi Database Jejak Audit ISO 27001 (Fase 2)
+# Konfigurasi Database Jejak Audit ISO 27001
 SQLALCHEMY_DATABASE_URL = "sqlite:///./vapt_iso27001.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base.metadata.create_all(bind=engine)
 
-# Inisialisasi Aplikasi (Fase 1)
+# Dependency Injection untuk Sesi Database
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# Inisialisasi Aplikasi Utama
 app = FastAPI(
     title="VAPT ISO 27001 API", 
     description="Platform terpadu VAPT dan otomatisasi GRC sesuai ISO 27001:2022"
 )
 
-from fastapi.middleware.cors import CORSMiddleware
-
-# Izinkan frontend mengakses API ini
+# Konfigurasi Keamanan CORS Lanjutan
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Untuk tahap pengembangan lokal
+    allow_origins=["http://localhost:3000"], # Ganti dengan domain production Anda
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-) #
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 # Mendaftarkan semua router ke aplikasi utama
 app.include_router(pre_engagement_router, prefix="/legal", tags=["Pre-Engagement"])
@@ -74,12 +57,12 @@ app.include_router(exploit_router, prefix="/exploit", tags=["Eksploitasi"])
 app.include_router(ticketing_router, prefix="/itsm", tags=["Ticketing & Remediasi"])
 app.include_router(dashboard_router, prefix="/ui", tags=["UI/UX Dashboards"])
 
-# Endpoint AI Scoring Engine untuk klasifikasi risiko (Fase 4)
+# Endpoint AI Scoring Engine dengan Validasi Ketat
 class RiskRequest(BaseModel):
-    cvss_score: float
-    epss_score: float
+    cvss_score: float = Field(..., ge=0.0, le=10.0)
+    epss_score: float = Field(..., ge=0.0, le=1.0)
     is_cisa_kev: bool
-    asset_criticality: int
+    asset_criticality: int = Field(..., ge=1, le=5)
 
 @app.post("/risk/calculate", tags=["AI Scoring Engine"])
 def hitung_risiko(request: RiskRequest):
@@ -98,26 +81,6 @@ def read_root():
         "status": "Aktif", 
         "message": "Arsitektur Microservices VAPT siap digunakan. Database dan semua modul telah terhubung."
     }
-    
-import uvicorn
-
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from api import exploitation # Sesuaikan dengan struktur import Anda
-
-app = FastAPI()
-
-# Tambahkan blok CORS ini
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], # Mengizinkan semua origin untuk simulasi
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Daftarkan router
-app.include_router(exploitation.router, prefix="/exploit")
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,8 +1,14 @@
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, IPvAnyAddress, HttpUrl
-from typing import Union, Optional
+from typing import Optional, Union
+# from main import get_db # Gunakan ini jika ingin menginjeksi aktivitas database
+
+from scanners.nmap_runner import run_nmap_scan
+
+router = APIRouter()
 
 class ScanRequest(BaseModel):
-    # Memaksa input agar hanya menerima IP atau URL yang valid
+    # Validasi ketat target agar memblokir parameter nmap ilegal (Command Injection)
     target: Union[IPvAnyAddress, HttpUrl] 
     scan_type: str
     credentials: Optional[dict] = None
@@ -10,23 +16,23 @@ class ScanRequest(BaseModel):
 @router.post("/run-scan/")
 def run_vulnerability_scan(request: ScanRequest):
     """
-    Menjalankan pemindaian kerentanan. Mendukung metode credentialed 
-    dan non-credentialed terhadap jaringan, host, dan database.
+    Menjalankan pemindaian kerentanan mendalam ke infrastruktur.
     """
-    # Validasi jika pengguna memilih credentialed scan tapi tidak memasukkan kredensial
     if request.scan_type == "credentialed" and not request.credentials:
-        raise HTTPException(status_code=400, detail="Kredensial (username/password/key) dibutuhkan untuk metode credentialed.")
+        raise HTTPException(status_code=400, detail="Kredensial dibutuhkan untuk metode credentialed.")
     
-    # Di sinilah Anda menghubungkan skrip dengan file `scanners/nmap_runner.py` 
-    # atau `zap_runner.py` yang sudah kita buat sebelumnya.
-    if request.scan_type == "credentialed":
-        log_hasil = f"Memindai {request.target} dengan autentikasi... (Simulasi: Ditemukan miskonfigurasi database)"
-    else:
-        log_hasil = f"Memindai {request.target} tanpa autentikasi... (Simulasi: Ditemukan port 80 dan 443 terbuka)"
-        
-    return {
-        "target": request.target,
-        "tipe_pemindaian": request.scan_type,
-        "status": "Berhasil",
-        "log_deteksi": log_hasil
-    }
+    try:
+        if request.scan_type == "non-credentialed":
+            # Eksekusi runner Nmap secara aman
+            log_hasil = run_nmap_scan(str(request.target))
+        else:
+            log_hasil = f"Pemindaian credentialed untuk {request.target} dalam tahap penyempurnaan."
+            
+        return {
+            "target": str(request.target),
+            "tipe_pemindaian": request.scan_type,
+            "status": "Berhasil",
+            "log_deteksi": log_hasil
+        }
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
