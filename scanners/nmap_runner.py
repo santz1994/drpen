@@ -1,21 +1,33 @@
-import subprocess
+# Di dalam api/scanning.py
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional
 
-def run_nmap_scan(target_ip):
-    """
-    Mengeksekusi Nmap secara terprogram untuk pemindaian non-credentialed.
-    """
-    print(f"Memulai pemindaian pada {target_ip}...")
-    try:
-        # Menjalankan perintah nmap dasar di terminal melalui Python
-        hasil = subprocess.run(['nmap', '-sV', target_ip], capture_output=True, text=True)
-        return hasil.stdout
-    except FileNotFoundError:
-        return "Nmap belum terinstal di sistem Anda."
-    except Exception as e:
-        return f"Terjadi kesalahan: {e}"
+# Impor runner nmap yang sudah dibuat
+from scanners.nmap_runner import run_nmap_scan 
 
-# Contoh eksekusi saat file dijalankan
-if __name__ == "__main__":
-    target = "127.0.0.1" # Target localhost
-    log_hasil = run_nmap_scan(target)
-    print("Hasil Pemindaian:\n", log_hasil)
+router = APIRouter()
+
+class ScanRequest(BaseModel):
+    target: str
+    scan_type: str
+    credentials: Optional[dict] = None
+
+@router.post("/run-scan/")
+async def run_vulnerability_scan(request: ScanRequest):
+    if request.scan_type == "credentialed" and not request.credentials:
+        raise HTTPException(status_code=400, detail="Kredensial dibutuhkan.")
+    
+    # Eksekusi pemindaian secara nyata
+    log_hasil = ""
+    if request.scan_type == "non-credentialed":
+        log_hasil = run_nmap_scan(request.target)
+    else:
+        log_hasil = f"Pemindaian credentialed untuk {request.target} belum diimplementasikan di runner."
+        
+    return {
+        "target": request.target,
+        "tipe_pemindaian": request.scan_type,
+        "status": "Berhasil",
+        "log_deteksi": log_hasil
+    }
