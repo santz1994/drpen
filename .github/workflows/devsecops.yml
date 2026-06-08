@@ -1,0 +1,24 @@
+name: DevSecOps Pipeline VAPT
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  sast_scan:
+    name: Pengujian Fase Dev (SAST)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout kode
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Jalankan Analisis Statis (SAST)
+        run: |
+          echo "Memulai analisis statis di latar belakang..."
+          pip install bandit
+          bandit -r .
