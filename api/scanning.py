@@ -1,17 +1,14 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, IPvAnyAddress, HttpUrl
+from typing import Union, Optional
 
-router = APIRouter()
-
-# Skema data untuk menerima permintaan (request) pemindaian
 class ScanRequest(BaseModel):
-    target: str
-    scan_type: str  # Pilihan: 'credentialed' atau 'non-credentialed'
-    credentials: Optional[dict] = None  # Hanya diisi jika scan_type = credentialed
+    # Memaksa input agar hanya menerima IP atau URL yang valid
+    target: Union[IPvAnyAddress, HttpUrl] 
+    scan_type: str
+    credentials: Optional[dict] = None
 
 @router.post("/run-scan/")
-async def run_vulnerability_scan(request: ScanRequest):
+def run_vulnerability_scan(request: ScanRequest):
     """
     Menjalankan pemindaian kerentanan. Mendukung metode credentialed 
     dan non-credentialed terhadap jaringan, host, dan database.

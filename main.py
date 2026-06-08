@@ -20,6 +20,29 @@ from api.exploitation import router as exploit_router
 from api.ticketing import router as ticketing_router
 from api.dashboard import router as dashboard_router
 
+# Di scanners/nmap_runner.py
+import subprocess
+
+def run_nmap_scan(target_ip):
+    try:
+        hasil = subprocess.run(['nmap', '-sV', str(target_ip)], capture_output=True, text=True, check=True)
+        return hasil.stdout
+    except FileNotFoundError:
+        raise RuntimeError("Engine Nmap belum terinstal di server host.")
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Nmap gagal dieksekusi: {e.stderr}")
+
+# Di api/scanning.py
+from fastapi import HTTPException
+
+@router.post("/run-scan/")
+def run_vulnerability_scan(request: ScanRequest):
+    try:
+        log_hasil = run_nmap_scan(request.target)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    # ...
+
 # Konfigurasi Database Jejak Audit ISO 27001 (Fase 2)
 SQLALCHEMY_DATABASE_URL = "sqlite:///./vapt_iso27001.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
@@ -97,4 +120,5 @@ app.add_middleware(
 app.include_router(exploitation.router, prefix="/exploit")
 
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
